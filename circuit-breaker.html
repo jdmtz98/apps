@@ -1,0 +1,815 @@
+ <!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8" />
+ <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+ <title>Circuit Breaker | Syntax Diagnostics (Improved)</title>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.14.0/Sortable.min.js"></script>
+ <style>
+ :root{
+ --bg:#1b1b1b;
+ --panel:#262626;
+ --text:#ccc;
+
+ --indep:#4caf50;
+ --dep:#f44336;
+ --tool:#2196f3;
+
+ --warn:#ff9800;
+ --ok:#00ff00;
+ --bad:#ff0000;
+
+ --lcdbg:#111;
+ --border:#444;
+
+ --muted:#777;
+ --shadow: rgba(0,0,0,0.55);
+ }
+
+ body{
+ font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+ background: var(--bg);
+ color: var(--text);
+ margin:0;
+ padding:18px;
+ height:100vh;
+ box-sizing:border-box;
+ display:flex;
+ flex-direction:column;
+ gap:14px;
+ user-select:none;
+ }
+
+ /* TOP PANEL */
+ .monitor{
+ background:#000;
+ border:4px solid var(--border);
+ border-radius:10px;
+ padding:14px;
+ box-shadow: inset 0 0 18px rgba(0,0,0,.8);
+ }
+ .row{
+ display:flex;
+ gap:12px;
+ flex-wrap:wrap;
+ align-items:center;
+ justify-content:space-between;
+ }
+ .lcdwrap{ flex: 1; min-width: 320px; }
+ .label{
+ font-size:.78em;
+ color:#666;
+ margin-bottom:6px;
+ letter-spacing:1px;
+ }
+ #lcd{
+ font-family:"Courier New", monospace;
+ font-weight:900;
+ font-size:1.35rem;
+ background: var(--lcdbg);
+ border:2px inset #555;
+ border-radius:6px;
+ padding:10px 12px;
+ text-align:center;
+ color:#555;
+ letter-spacing:2px;
+ text-shadow: 0 0 5px rgba(0,0,0,0.55);
+ }
+ #lcd.stable{ color: var(--ok); border-color: var(--ok); text-shadow: 0 0 12px rgba(0,255,0,.35); }
+ #lcd.warning{ color: var(--warn); border-color: var(--warn); text-shadow: 0 0 12px rgba(255,152,0,.25); }
+ #lcd.error{ color: var(--bad); border-color: var(--bad); text-shadow: 0 0 12px rgba(255,0,0,.25); }
+
+ #diag{
+ margin-top:8px;
+ text-align:center;
+ font-size:.95em;
+ color:#9a9a9a;
+ line-height:1.25em;
+ min-height:2.5em;
+ }
+
+ .stats{
+ display:flex;
+ gap:10px;
+ flex-wrap:wrap;
+ align-items:center;
+ justify-content:flex-end;
+ min-width: 260px;
+ }
+ .stat{
+ background:#121212;
+ border:1px solid #333;
+ border-radius:8px;
+ padding:8px 10px;
+ min-width: 110px;
+ text-align:center;
+ box-shadow: 0 2px 10px rgba(0,0,0,.35);
+ }
+ .stat .k{ font-size:.72em; color: var(--muted); letter-spacing:1px; text-transform:uppercase; }
+ .stat .v{ font-size:1.05em; color:#e6e6e6; font-weight:700; margin-top:3px; }
+
+ /* WORKBENCH */
+ .workbench{
+ flex:1;
+ background: var(--panel);
+ border:2px dashed #555;
+ border-radius:10px;
+ padding:16px;
+ position:relative;
+ overflow:auto;
+ display:flex;
+ flex-direction:column;
+ gap:12px;
+ }
+ .benchlabel{
+ position:absolute;
+ top:10px;
+ right:12px;
+ color:#666;
+ font-weight:800;
+ letter-spacing:1px;
+ text-transform:uppercase;
+ pointer-events:none;
+ font-size:.85em;
+ }
+
+ #circuit-line{
+ display:flex;
+ flex-wrap:wrap;
+ align-items:center;
+ gap:6px;
+ min-height:92px;
+ width:100%;
+ padding:12px;
+ border-bottom:2px solid #333;
+ box-sizing:border-box;
+ }
+
+ .preview{
+ background:#171717;
+ border:1px solid #333;
+ border-radius:10px;
+ padding:12px;
+ box-shadow: 0 2px 10px rgba(0,0,0,.35);
+ }
+ .preview .k{
+ font-size:.75em;
+ color: var(--muted);
+ letter-spacing:1px;
+ text-transform:uppercase;
+ margin-bottom:8px;
+ }
+ #sentencePreview{
+ font-size:1.05em;
+ color:#e8e8e8;
+ line-height:1.35em;
+ white-space:pre-wrap;
+ min-height:1.4em;
+ }
+
+ /* PARTS BINS */
+ .parts{
+ display:flex;
+ gap:12px;
+ height: 34%;
+ min-height: 250px;
+ }
+ .bin{
+ flex:1;
+ background:#222;
+ border:1px solid #444;
+ border-radius:10px;
+ overflow:hidden;
+ display:flex;
+ flex-direction:column;
+ }
+ .binhead{
+ background:#333;
+ padding:8px;
+ text-align:center;
+ font-weight:900;
+ font-size:.9em;
+ text-transform:uppercase;
+ border-bottom:1px solid #444;
+ letter-spacing:1px;
+ }
+ .binbody{
+ flex:1;
+ padding:10px;
+ overflow:auto;
+ display:flex;
+ flex-direction:column;
+ gap:8px;
+ }
+
+ /* CARDS */
+ .card{
+ padding:10px 14px;
+ border-radius:8px;
+ cursor:grab;
+ font-weight:650;
+ font-size:1rem;
+ box-shadow: 0 2px 7px var(--shadow);
+ transition: transform .08s, box-shadow .08s, outline .08s;
+ display:inline-flex;
+ align-items:center;
+ gap:8px;
+ width: fit-content;
+ max-width: 100%;
+ }
+ .card:active{ transform: scale(.985); }
+ .card small{
+ opacity:.8;
+ font-weight:700;
+ letter-spacing:.5px;
+ }
+
+ .indep{ background: rgba(76,175,80,.18); border:2px solid var(--indep); color:#e8f5e9; }
+ .dep{ background: rgba(244,67,54,.18); border:2px solid var(--dep); color:#ffebee; }
+ .tool{ background: rgba(33,150,243,.18); border:2px solid var(--tool); color:#e3f2fd; text-align:center; }
+ .tool.fanboy{ border-style:dashed; }
+ .punct{
+ font-size:1.55em;
+ line-height:1em;
+ width:44px;
+ justify-content:center;
+ padding:8px 0;
+ }
+
+ .badmark{
+ outline: 3px solid var(--bad);
+ box-shadow: 0 0 0 2px rgba(0,0,0,.2), 0 0 18px rgba(255,0,0,.18);
+ }
+
+ /* CONTROLS */
+ .controls{
+ display:flex;
+ gap:10px;
+ flex-wrap:wrap;
+ justify-content:center;
+ align-items:center;
+ margin-top: 4px;
+ }
+ button{
+ background:#2d2d2d;
+ color:#fff;
+ border:1px solid #555;
+ padding:9px 14px;
+ cursor:pointer;
+ text-transform:uppercase;
+ font-weight:900;
+ letter-spacing:1px;
+ border-radius:10px;
+ }
+ button:hover{ background:#3a3a3a; }
+ button:active{ transform: scale(.99); }
+
+ .trash{
+ margin-top:auto;
+ background:#2b1515;
+ color:#ef5350;
+ text-align:center;
+ padding:10px;
+ border-top:1px solid #ef5350;
+ cursor:pointer;
+ font-weight:900;
+ letter-spacing:1px;
+ }
+ .hint{
+ background:#141414;
+ border:1px dashed #444;
+ border-radius:10px;
+ padding:10px 12px;
+ color:#cfcfcf;
+ font-size:.95em;
+ line-height:1.35em;
+ }
+ .hint b{ color:#fff; }
+
+ @media (max-width: 980px){
+ .parts{ height: auto; flex-direction:column; }
+ .stats{ justify-content:flex-start; }
+ }
+ </style>
+</head>
+<body>
+
+ <div class="monitor">
+ <div class="row">
+ <div class="lcdwrap">
+ <div class="label">SYSTEM STATUS</div>
+ <div id="lcd">WAITING FOR INPUT...</div>
+ <div id="diag">Drag components to the Circuit Line. Period (.) ends a sentence.</div>
+ </div>
+
+ <div class="stats">
+ <div class="stat">
+ <div class="k">Challenge</div>
+ <div class="v" id="challengeTag">—</div>
+ </div>
+ <div class="stat">
+ <div class="k">Streak</div>
+ <div class="v" id="streak">0</div>
+ </div>
+ <div class="stat">
+ <div class="k">XP / Level</div>
+ <div class="v"><span id="xp">0</span> / <span id="lvl">1</span></div>
+ </div>
+ </div>
+ </div>
+ </div>
+
+ <div class="workbench">
+ <div class="benchlabel">Circuit Line (Sequence)</div>
+
+ <div id="circuit-line" aria-label="Circuit Line"></div>
+
+ <div class="preview">
+ <div class="k">Assembled Output</div>
+ <div id="sentencePreview">(nothing built yet)</div>
+ </div>
+
+ <div class="hint" id="hintBox" style="display:none;"></div>
+ </div>
+
+ <div class="parts">
+ <div class="bin">
+ <div class="binhead" style="color: var(--indep);">Power Sources (Independent Clauses)</div>
+ <div class="binbody" id="bin-indep">
+ <div class="card indep" data-type="indep">The engine overheated</div>
+ <div class="card indep" data-type="indep">The truck stopped</div>
+ <div class="card indep" data-type="indep">We lost the contract</div>
+ <div class="card indep" data-type="indep">I was late to work</div>
+ <div class="card indep" data-type="indep">The tires were bald</div>
+ </div>
+ </div>
+
+ <div class="bin">
+ <div class="binhead" style="color: var(--dep);">Loads (Dependent Clauses)</div>
+ <div class="binbody" id="bin-dep">
+ <div class="card dep" data-type="dep">Because the oil leaked</div>
+ <div class="card dep" data-type="dep">If you check the brakes</div>
+ <div class="card dep" data-type="dep">Although it was cheap</div>
+ <div class="card dep" data-type="dep">When the alarm rang</div>
+ <div class="card dep" data-type="dep">Unless we fix it</div>
+ </div>
+ </div>
+
+ <div class="bin">
+ <div class="binhead" style="color: var(--tool);">Tools & Connectors</div>
+ <div class="binbody" id="bin-tools">
+ <div class="card tool punct" data-type="comma">,</div>
+ <div class="card tool punct" data-type="semicolon">;</div>
+ <div class="card tool punct" data-type="period">.</div>
+ <div class="card tool fanboy" data-type="fanboy">and</div>
+ <div class="card tool fanboy" data-type="fanboy">but</div>
+ <div class="card tool fanboy" data-type="fanboy">so</div>
+ </div>
+ <div id="trash" class="trash">TRASH (drop here)</div>
+ </div>
+ </div>
+
+ <div class="controls">
+ <button id="btnChallenge">New Challenge</button>
+ <button id="btnHint">Show Hint</button>
+ <button id="btnUndo">Undo</button>
+ <button id="btnReset">Reset Bench</button>
+ <button onclick="loadScenario('runon')">Sim: Run-On</button>
+ <button onclick="loadScenario('splice')">Sim: Splice</button>
+ <button onclick="loadScenario('frag')">Sim: Fragment</button>
+ </div>
+
+<script>
+ const lcd = document.getElementById('lcd');
+ const diag = document.getElementById('diag');
+ const preview = document.getElementById('sentencePreview');
+ const hintBox = document.getElementById('hintBox');
+
+ const elChallengeTag = document.getElementById('challengeTag');
+ const elStreak = document.getElementById('streak');
+ const elXp = document.getElementById('xp');
+ const elLvl = document.getElementById('lvl');
+
+ let history = [];
+ let streak = 0;
+ let xp = 0;
+ let level = 1;
+
+ // --- Challenge system (lightweight, fast) ---
+ const CHALLENGES = [
+ { id:'simple', tag:'SIMPLE', goal:'Build one correct independent clause.' },
+ { id:'compound_semicolon', tag:'COMPOUND', goal:'Build a correct compound sentence using a semicolon.' },
+ { id:'compound_fanboys', tag:'COMPOUND', goal:'Build a correct compound sentence using comma + FANBOYS.' },
+ { id:'complex_intro', tag:'COMPLEX', goal:'Start with a dependent clause, then comma, then independent clause.' },
+ { id:'complex_trail', tag:'COMPLEX', goal:'Independent clause followed by a dependent clause (no comma).' },
+ { id:'two_sentences', tag:'DUAL', goal:'Build two correct sentences separated by a period.' }
+ ];
+ let activeChallenge = null;
+
+ function setChallenge(ch){
+ activeChallenge = ch;
+ elChallengeTag.textContent = ch ? ch.tag : '—';
+ diag.textContent = ch ? ch.goal : 'Drag components to the Circuit Line. Period (.) ends a sentence.';
+ hintBox.style.display = 'none';
+ }
+
+ function award(success){
+ if(success){
+ streak += 1;
+ xp += 10 + Math.min(streak, 10); // small streak bonus, capped
+ if(xp >= level * 50){
+ xp = xp - level * 50;
+ level += 1;
+ }
+ } else {
+ streak = 0;
+ }
+ elStreak.textContent = streak;
+ elXp.textContent = xp;
+ elLvl.textContent = level;
+ }
+
+ // --- Setup drag/drop ---
+ document.addEventListener('DOMContentLoaded', () => {
+ const binOps = {
+ group: { name:'shared', pull:'clone', put:false },
+ sort:false,
+ animation:150
+ };
+ new Sortable(document.getElementById('bin-indep'), binOps);
+ new Sortable(document.getElementById('bin-dep'), binOps);
+ new Sortable(document.getElementById('bin-tools'), binOps);
+
+ new Sortable(document.getElementById('circuit-line'), {
+ group: { name:'shared', pull:true, put:true },
+ animation:150,
+ onAdd: () => { saveHistory(); runDiagnostics(); },
+ onUpdate: () => { saveHistory(); runDiagnostics(); }
+ });
+
+ new Sortable(document.getElementById('trash'), {
+ group: { name:'shared', pull:false, put:true },
+ onAdd: (evt) => {
+ evt.item.remove();
+ saveHistory();
+ runDiagnostics();
+ }
+ });
+
+ // controls
+ document.getElementById('btnReset').addEventListener('click', clearBench);
+ document.getElementById('btnUndo').addEventListener('click', undo);
+ document.getElementById('btnChallenge').addEventListener('click', newChallenge);
+ document.getElementById('btnHint').addEventListener('click', toggleHint);
+
+ newChallenge(); // start with a challenge by default
+ runDiagnostics();
+ });
+
+ function saveHistory(){
+ const line = document.getElementById('circuit-line');
+ const snapshot = Array.from(line.children).map(node => ({
+ type: node.getAttribute('data-type'),
+ text: node.textContent,
+ cls: node.className
+ }));
+ history.push(snapshot);
+ if(history.length > 30) history.shift();
+ }
+
+ function restoreSnapshot(snapshot){
+ const line = document.getElementById('circuit-line');
+ line.innerHTML = '';
+ snapshot.forEach(item => {
+ const div = document.createElement('div');
+ div.className = item.cls;
+ div.setAttribute('data-type', item.type);
+ div.textContent = item.text;
+ line.appendChild(div);
+ });
+ }
+
+ function undo(){
+ if(history.length < 2) return;
+ history.pop();
+ restoreSnapshot(history[history.length - 1]);
+ runDiagnostics(false);
+ }
+
+ function clearBench(){
+ document.getElementById('circuit-line').innerHTML = '';
+ history = [];
+ saveHistory();
+ runDiagnostics(false);
+ }
+
+ function newChallenge(){
+ const ch = CHALLENGES[Math.floor(Math.random() * CHALLENGES.length)];
+ setChallenge(ch);
+ // keep bench; teacher can require "clear then build" if desired
+ }
+
+ function toggleHint(){
+ if(!activeChallenge){
+ hintBox.style.display = 'block';
+ hintBox.innerHTML = '<b>Hint:</b> A period ends a sentence. Independent clauses can stand alone. Dependent clauses cannot.';
+ return;
+ }
+ const showing = hintBox.style.display === 'block';
+ hintBox.style.display = showing ? 'none' : 'block';
+ if(!showing){
+ hintBox.innerHTML = challengeHint(activeChallenge.id);
+ }
+ }
+
+ function challengeHint(id){
+ const map = {
+ simple: '<b>Target:</b> INDEP',
+ compound_semicolon: '<b>Target:</b> INDEP ; INDEP<br><small>Semicolons link two complete sentences.</small>',
+ compound_fanboys: '<b>Target:</b> INDEP , FANBOYS INDEP<br><small>Comma + coordinating conjunction.</small>',
+ complex_intro: '<b>Target:</b> DEP , INDEP<br><small>Intro dependent clause requires a comma.</small>',
+ complex_trail: '<b>Target:</b> INDEP DEP<br><small>No comma when the dependent clause trails.</small>',
+ two_sentences: '<b>Target:</b> INDEP . INDEP<br><small>Two complete sentences, separated by a period.</small>'
+ };
+ return map[id] || '<b>Hint:</b> Build a correct sentence.';
+ }
+
+ // --- Diagnostics ---
+ function runDiagnostics(awardPoints = true){
+ const line = document.getElementById('circuit-line');
+ const nodes = Array.from(line.children);
+
+ // clear error highlights
+ nodes.forEach(n => n.classList.remove('badmark'));
+
+ const tokens = nodes.map((n, idx) => ({
+ type: n.getAttribute('data-type'),
+ text: n.textContent.trim(),
+ idx
+ }));
+
+ preview.textContent = tokens.length ? assembleText(tokens) : '(nothing built yet)';
+
+ // base UI
+ setStatus('ANALYZING...', '');
+ diag.textContent = activeChallenge ? activeChallenge.goal : 'Analyzing your build...';
+
+ if(tokens.length === 0){
+ setStatus('NO INPUT', '');
+ diag.textContent = activeChallenge ? activeChallenge.goal : 'Drag components to the Circuit Line. Period (.) ends a sentence.';
+ return;
+ }
+
+ // split into sentences by period tokens
+ const sentences = splitByPeriod(tokens);
+
+ // validate each sentence
+ for(let s = 0; s < sentences.length; s++){
+ const sentence = sentences[s];
+
+ // allow empty sentence only if it's the very end (e.g., trailing period) -> still flag as unclear
+ if(sentence.length === 0){
+ setProblem('SIGNAL UNCLEAR', 'warning', `Sentence ${s+1} is empty. Remove extra periods.`, []);
+ if(awardPoints) award(false);
+ return;
+ }
+
+ const result = validateSentence(sentence);
+ if(!result.ok){
+ setProblem(result.status, result.level, `Sentence ${s+1}: ${result.msg}`, result.badIdxs);
+ if(awardPoints) award(false);
+ return;
+ }
+ }
+
+ // If we got here, everything built is grammatically acceptable under current rule set.
+ const successLabel = successType(sentences);
+ setStatus('SYSTEM STABLE', 'stable');
+ diag.textContent = successLabel;
+
+ // challenge check
+ let challengePassed = true;
+ if(activeChallenge){
+ challengePassed = matchesChallenge(sentences, activeChallenge.id);
+ if(!challengePassed){
+ setStatus('STABLE, WRONG TARGET', 'warning');
+ diag.textContent = `Built a correct structure, but not the challenge target: ${activeChallenge.goal}`;
+ }
+ }
+
+ if(awardPoints) award(challengePassed);
+
+ // auto-advance on pass (keeps pace)
+ if(activeChallenge && challengePassed){
+ setTimeout(() => newChallenge(), 450);
+ }
+ }
+
+ function setStatus(text, type){
+ lcd.textContent = text;
+ lcd.className = type ? `stable warning error`.includes(type) ? type : '' : '';
+ lcd.id = 'lcd';
+ lcd.className = type ? type : '';
+ }
+
+ function setProblem(status, level, message, badIdxs){
+ lcd.textContent = status;
+ lcd.className = level || '';
+ diag.textContent = message;
+
+ const line = document.getElementById('circuit-line');
+ const nodes = Array.from(line.children);
+ badIdxs.forEach(i => {
+ if(nodes[i]) nodes[i].classList.add('badmark');
+ });
+ }
+
+ function assembleText(tokens){
+ // intelligent spacing around punctuation
+ let out = '';
+ tokens.forEach(t => {
+ if(t.type === 'comma' || t.type === 'semicolon' || t.type === 'period'){
+ out = out.trimEnd() + t.text + ' ';
+ } else {
+ out += t.text + ' ';
+ }
+ });
+ return out.trim();
+ }
+
+ function splitByPeriod(tokens){
+ const sentences = [];
+ let current = [];
+ tokens.forEach(t => {
+ if(t.type === 'period'){
+ sentences.push(current);
+ current = [];
+ } else {
+ current.push(t);
+ }
+ });
+ // leftover tokens (no period at end)
+ if(current.length) sentences.push(current);
+ return sentences;
+ }
+
+ function validateSentence(sentence){
+ // sentence is array of {type,text,idx}
+ const types = sentence.map(t => t.type);
+
+ // hard invalid starts/ends
+ const first = types[0];
+ const last = types[types.length - 1];
+
+ if(first === 'comma' || first === 'semicolon' || first === 'fanboy'){
+ return fail('SIGNAL ERROR', 'error', 'Sentence cannot start with that component.', [sentence[0].idx]);
+ }
+ if(last === 'comma' || last === 'semicolon' || last === 'fanboy'){
+ return fail('SIGNAL ERROR', 'error', 'Sentence cannot end with that component.', [sentence[sentence.length-1].idx]);
+ }
+
+ // must include at least one clause
+ const hasIndep = types.includes('indep');
+ const hasDep = types.includes('dep');
+ if(!hasIndep && !hasDep){
+ return fail('OPEN CIRCUIT', 'error', 'No clause detected. Add an independent or dependent clause.', []);
+ }
+
+ // fragment: dep alone (or dep with only punctuation-like issues)
+ if(hasDep && !hasIndep){
+ return fail('OPEN CIRCUIT (FRAGMENT)', 'error', 'Dependent clauses cannot stand alone. Add an independent clause.', sentence.map(t => t.idx));
+ }
+
+ // detect "touching indep indep" run-on
+ for(let i=0;i<types.length-1;i++){
+ if(types[i]==='indep' && types[i+1]==='indep'){
+ return fail('SHORT CIRCUIT (RUN-ON)', 'error', 'Two independent clauses are touching. Use a period, semicolon, or comma + FANBOYS.', [sentence[i].idx, sentence[i+1].idx]);
+ }
+ }
+
+ // comma splice: indep , indep
+ for(let i=0;i<types.length-2;i++){
+ if(types[i]==='indep' && types[i+1]==='comma' && types[i+2]==='indep'){
+ return fail('ARC FAULT (COMMA SPLICE)', 'warning', 'Comma alone cannot connect two independent clauses. Add FANBOYS, or switch to a semicolon/period.', [sentence[i+1].idx]);
+ }
+ }
+
+ // missing comma before FANBOYS in compound: indep fanboy indep
+ for(let i=0;i<types.length-2;i++){
+ if(types[i]==='indep' && types[i+1]==='fanboy' && types[i+2]==='indep'){
+ return fail('OVERLOAD (RUN-ON)', 'error', 'Compound sentences with FANBOYS need a comma before the conjunction.', [sentence[i+1].idx]);
+ }
+ }
+
+ // semicolon misuse: only allowed pattern indep ; indep (exactly 3 tokens)
+ const semiCount = types.filter(t => t==='semicolon').length;
+ if(semiCount > 0){
+ if(!(types.length === 3 && types[0]==='indep' && types[1]==='semicolon' && types[2]==='indep')){
+ const bad = sentence.filter(t => t.type==='semicolon').map(t => t.idx);
+ return fail('SEMICOLON MISWIRE', 'warning', 'Semicolons should directly link two independent clauses: INDEP ; INDEP.', bad);
+ }
+ }
+
+ // dependent clause placement rules (teachable set)
+ // Intro complex must be: dep , indep (exactly 3 tokens)
+ if(types[0]==='dep'){
+ if(!(types.length===3 && types[1]==='comma' && types[2]==='indep')){
+ const bad = [];
+ // highlight missing/extra comma area
+ if(types.length>=2) bad.push(sentence[1].idx);
+ return fail('OPEN CIRCUIT (FRAGMENT RISK)', 'error', 'When a dependent clause comes first, it needs a comma, then an independent clause: DEP , INDEP.', bad.length?bad:sentence.map(t=>t.idx));
+ }
+ }
+
+ // Trailing dependent clause: indep dep (exactly 2 tokens)
+ // (No comma required; block "indep , dep" as a common mistake at this level)
+ if(types.length===3 && types[0]==='indep' && types[1]==='comma' && types[2]==='dep'){
+ return fail('COMMA MISPLACED', 'warning', 'No comma is needed before a trailing dependent clause at this level: INDEP DEP.', [sentence[1].idx]);
+ }
+
+ // Acceptable “known good” patterns for now:
+ // INDEP
+ // INDEP ; INDEP
+ // INDEP , FANBOYS INDEP
+ // DEP , INDEP
+ // INDEP DEP
+ // INDEP , dep is flagged above; other longer patterns are "unclear" (teacher can expand later)
+
+ const okKnown =
+ (types.length===1 && types[0]==='indep') ||
+ (types.length===3 && types[0]==='indep' && types[1]==='semicolon' && types[2]==='indep') ||
+ (types.length===4 && types[0]==='indep' && types[1]==='comma' && types[2]==='fanboy' && types[3]==='indep') ||
+ (types.length===3 && types[0]==='dep' && types[1]==='comma' && types[2]==='indep') ||
+ (types.length===2 && types[0]==='indep' && types[1]==='dep');
+
+ if(!okKnown){
+ return fail('SIGNAL UNCLEAR', 'warning', 'Build matches no taught pattern yet. Try a simple/compound/complex structure.', []);
+ }
+
+ return { ok:true };
+ }
+
+ function fail(status, level, msg, badIdxs){
+ return { ok:false, status, level, msg, badIdxs };
+ }
+
+ function successType(sentences){
+ // Describe what they built (basic)
+ if(sentences.length===1){
+ const t = sentences[0].map(x=>x.type);
+ if(t.length===1 && t[0]==='indep') return 'Simple Circuit active.';
+ if(t.length===3 && t[1]==='semicolon') return 'Compound Circuit (Semicolon Link) active.';
+ if(t.length===4 && t[2]==='fanboy') return 'Compound Circuit (Comma + FANBOYS) active.';
+ if(t.length===3 && t[0]==='dep') return 'Complex Circuit (Intro Dependent Clause) active.';
+ if(t.length===2 && t[1]==='dep') return 'Complex Circuit (Trailing Dependent Clause) active.';
+ return 'System stable.';
+ }
+ return 'Dual Circuits active (multiple sentences).';
+ }
+
+ function matchesChallenge(sentences, id){
+ const types1 = sentences[0]?.map(x=>x.type) || [];
+ const types2 = sentences[1]?.map(x=>x.type) || [];
+
+ const is = (a, pattern) => a.length===pattern.length && a.every((v,i)=>v===pattern[i]);
+
+ switch(id){
+ case 'simple': return sentences.length===1 && is(types1, ['indep']);
+ case 'compound_semicolon': return sentences.length===1 && is(types1, ['indep','semicolon','indep']);
+ case 'compound_fanboys': return sentences.length===1 && is(types1, ['indep','comma','fanboy','indep']);
+ case 'complex_intro': return sentences.length===1 && is(types1, ['dep','comma','indep']);
+ case 'complex_trail': return sentences.length===1 && is(types1, ['indep','dep']);
+ case 'two_sentences': return sentences.length===2 && is(types1,['indep']) && is(types2,['indep']);
+ default: return true;
+ }
+ }
+
+ // --- Scenario loader (kept) ---
+ function addCard(cls, text, type){
+ const line = document.getElementById('circuit-line');
+ const div = document.createElement('div');
+ div.className = `card ${cls}`;
+ div.textContent = text;
+ div.setAttribute('data-type', type);
+ line.appendChild(div);
+ }
+
+ function loadScenario(type){
+ clearBench();
+ if(type==='runon'){
+ addCard('indep', 'The engine overheated', 'indep');
+ addCard('indep', 'The truck stopped', 'indep');
+ } else if(type==='splice'){
+ addCard('indep', 'I was late to work', 'indep');
+ addCard('tool punct', ',', 'comma');
+ addCard('indep', 'The tires were bald', 'indep');
+ } else if(type==='frag'){
+ addCard('dep', 'Because the oil leaked', 'dep');
+ }
+ saveHistory();
+ runDiagnostics(false);
+ }
+</script>
+
+</body>
+</html>
